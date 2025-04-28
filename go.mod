@@ -1,4 +1,4 @@
-module cloudinary_mcp
+module gitee.com/cyeam/cloudinary_mcp
 
 go 1.23.1
 
