@@ -17,6 +17,21 @@
 3. 在项目根目录下执行以下命令运行项目：
 ```bash
 go install gitee.com/cyeam/cloudinary_mcp@latest
+
+{
+  "mcpServers": {
+    "image_upload": {
+      "type": "stdio",
+      "command": "cloudinary",
+      "args": [],
+      "env": {
+        "cloud": "cyeam",
+        "key": "key",
+        "secret": "password"
+      }
+    }
+  }
+}
 ```
 
 ## 测试代码

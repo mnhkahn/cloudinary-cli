@@ -17,6 +17,21 @@ You can obtain the keys from [here](https://console.cloudinary.com/settings/api-
 3. Execute the following command in the project root directory to run the project:
 ```bash
 go install gitee.com/cyeam/cloudinary_mcp@latest
+
+{
+  "mcpServers": {
+    "image_upload": {
+      "type": "stdio",
+      "command": "cloudinary",
+      "args": [],
+      "env": {
+        "cloud": "cyeam",
+        "key": "key",
+        "secret": "password"
+      }
+    }
+  }
+}
 ```
 
 ## Debug Code
