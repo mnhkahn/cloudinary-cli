@@ -74,7 +74,7 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 	return &protocol.CallToolResult{
 		Content: []protocol.Content{
 			protocol.TextContent{
-				Type: "link",
+				Type: "text",
 				Text: link,
 			},
 		},
