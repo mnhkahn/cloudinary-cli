@@ -1,36 +1,77 @@
-# cloudinary_mcp
+# Cloudinary MCP Project
 
-#### Description
-支持mcp协议上传cloudinary。
+## Overview
+This project is an MCP (Multi - Cloud Processing) server developed in Go. Its main function is to upload files to the Cloudinary cloud storage service. The server receives file path requests via the MCP protocol, uploads the corresponding files to Cloudinary, and finally returns the secure access links for the files.
 
-#### Software Architecture
-Software architecture description
+## Environment Variables
+Before running the project, you need to set the following environment variables:
+- `cloud`: Cloudinary's cloud name.
+- `key`: Cloudinary's API key.
+- `secret`: Cloudinary's API secret.
 
-#### Installation
+You can obtain the keys from [here](https://console.cloudinary.com/settings/api-keys).
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Steps to Run
+1. Ensure that the Go environment is correctly installed (version 1.23.1 or higher).
+2. Set the required environment variables.
+3. Execute the following command in the project root directory to run the project:
+```bash
+go install gitee.com/cyeam/cloudinary_mcp@latest
+```
 
-#### Instructions
+## Debug Code
+```go
+package main
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+import (
+	"context"
+	"github.com/ThinkInAIXYZ/go-mcp/pkg"
+	"log"
 
-#### Contribution
+	"github.com/ThinkInAIXYZ/go-mcp/client"
+	"github.com/ThinkInAIXYZ/go-mcp/protocol"
+	"github.com/ThinkInAIXYZ/go-mcp/transport"
+)
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+func main() {
+	transportClient, err := transport.NewStdioClientTransport("cloudinary", nil,
+		transport.WithStdioClientOptionLogger(pkg.DebugLogger),
+		transport.WithStdioClientOptionEnv("cloud=cyeam", "key=key1", "secret=password"))
+	if err != nil {
+		log.Fatalf("Failed to create transport client: %v", err)
+	}
+	// Initialize MCP client
+	mcpClient, err := client.NewClient(transportClient)
+	if err != nil {
+		log.Fatalf("Failed to create MCP client: %v", err)
+	}
+	defer mcpClient.Close()
 
+	// Get available tools
+	ctx := context.Background()
+	tools, err := mcpClient.ListTools(ctx)
+	if err != nil {
+		log.Fatalf("Failed to list tools: %v", err)
+	}
+	for _, tool := range tools.Tools {
+		log.Printf("Tool Name: %+v, Description: %s, Required: %+v", tool.Name, tool.Description, tool.InputSchema.Required)
+		if tool.Name == "cloudinary" {
+			req := &protocol.CallToolRequest{
+				Name: tool.Name,
+				Arguments: map[string]interface{}{
+					"file_path": "/Users/cyeam/Downloads/abc.jpg",
+				},
+			}
+			resp, err := mcpClient.CallTool(context.Background(), req)
+			if err != nil {
+				log.Fatalf("Failed to call tool: %v", err)
+			} else {
+				log.Printf("Tool Response: %+v", resp)
+			}
+		}
+	}
+}
+```
 
-#### Gitee Feature
-
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+## License
+This project is licensed under the [LICENSE](LICENSE).

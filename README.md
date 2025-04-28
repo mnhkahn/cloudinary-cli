@@ -9,12 +9,68 @@
 - `key`: Cloudinary的API密钥。
 - `secret`: Cloudinary的API密钥密码。
 
+密钥从[这里](https://console.cloudinary.com/settings/api-keys)获取。
+
 ## 运行步骤
 1. 确保Go环境已正确安装（版本1.23.1及以上）。
 2. 设置所需的环境变量。
 3. 在项目根目录下执行以下命令运行项目：
 ```bash
-go run cloudinary.go
+go install gitee.com/cyeam/cloudinary_mcp@latest
+```
+
+## 测试代码
+```go
+package main
+
+import (
+	"context"
+	"github.com/ThinkInAIXYZ/go-mcp/pkg"
+	"log"
+
+	"github.com/ThinkInAIXYZ/go-mcp/client"
+	"github.com/ThinkInAIXYZ/go-mcp/protocol"
+	"github.com/ThinkInAIXYZ/go-mcp/transport"
+)
+
+func main() {
+	transportClient, err := transport.NewStdioClientTransport("cloudinary", nil,
+		transport.WithStdioClientOptionLogger(pkg.DebugLogger),
+		transport.WithStdioClientOptionEnv("cloud=cyeam", "key=key1", "secret=password"))
+	if err != nil {
+		log.Fatalf("Failed to create transport client: %v", err)
+	}
+	// Initialize MCP client
+	mcpClient, err := client.NewClient(transportClient)
+	if err != nil {
+		log.Fatalf("Failed to create MCP client: %v", err)
+	}
+	defer mcpClient.Close()
+
+	// Get available tools
+	ctx := context.Background()
+	tools, err := mcpClient.ListTools(ctx)
+	if err != nil {
+		log.Fatalf("Failed to list tools: %v", err)
+	}
+	for _, tool := range tools.Tools {
+		log.Printf("Tool Name: %+v, Description: %s, Required: %+v", tool.Name, tool.Description, tool.InputSchema.Required)
+		if tool.Name == "cloudinary" {
+			req := &protocol.CallToolRequest{
+				Name: tool.Name,
+				Arguments: map[string]interface{}{
+					"file_path": "/Users/cyeam/Downloads/abc.jpg",
+				},
+			}
+			resp, err := mcpClient.CallTool(context.Background(), req)
+			if err != nil {
+				log.Fatalf("Failed to call tool: %v", err)
+			} else {
+				log.Printf("Tool Response: %+v", resp)
+			}
+		}
+	}
+}
 ```
 
 ## 许可证
