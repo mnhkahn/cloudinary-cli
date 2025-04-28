@@ -1,37 +1,21 @@
-# cloudinary_mcp
+# Cloudinary MCP 项目
 
-#### 介绍
-支持mcp协议上传cloudinary。
+## 概述
+本项目是一个基于Go语言开发的MCP（Multi - Cloud Processing）服务器，主要功能是将文件上传到Cloudinary云存储服务。服务器通过MCP协议接收文件路径请求，并将对应文件上传到Cloudinary，最后返回文件的安全访问链接。
 
-#### 软件架构
-软件架构说明
+## 环境变量
+运行项目前，需要设置以下环境变量：
+- `cloud`: Cloudinary的云名称。
+- `key`: Cloudinary的API密钥。
+- `secret`: Cloudinary的API密钥密码。
 
+## 运行步骤
+1. 确保Go环境已正确安装（版本1.23.1及以上）。
+2. 设置所需的环境变量。
+3. 在项目根目录下执行以下命令运行项目：
+```bash
+go run cloudinary.go
+```
 
-#### 安装教程
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 使用说明
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+## 许可证
+本项目采用[LICENSE](LICENSE)文件中指定的许可证。
