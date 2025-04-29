@@ -65,17 +65,16 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 	if err != nil {
 		return nil, err
 	}
-	link, err := Upload(context.Background(), cloud, key, secret, file)
+	res, err := Upload(ctx, cloud, key, secret, file)
 	if err != nil {
 		return nil, err
 	}
-	//log.Printf("File uploaded: %s", link)
 
 	return &protocol.CallToolResult{
 		Content: []protocol.Content{
 			protocol.TextContent{
 				Type: "text",
-				Text: link,
+				Text: res,
 			},
 		},
 	}, nil
