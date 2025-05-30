@@ -3,6 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -35,7 +39,7 @@ func Upload(ctx context.Context, cloud, key, secret string, data []byte) (string
 }
 
 type cloudinaryUploadRequest struct {
-	FilePath string `json:"file_path" description:"file_path" required:"true"` // Use field tag to describe input schema
+	FilePath string `json:"file_path" description:"file path in local directory or file url" required:"true"` // Use field tag to describe input schema
 }
 
 func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResult, error) {
@@ -61,11 +65,27 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 	}
 	logger.Infof("Received cloud, key, secret: %+v, %+v, %+v", cloud, key, secret)
 
-	file, err := os.ReadFile(uploadRequest.FilePath)
-	if err != nil {
-		return nil, err
+	var data []byte
+	var err error
+	if checkStringType(uploadRequest.FilePath) == urlPath {
+		resp, err := http.Get(uploadRequest.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		data, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+	} else if checkStringType(uploadRequest.FilePath) == filePath {
+		data, err = os.ReadFile(uploadRequest.FilePath)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, errors.New("file path is invalid")
 	}
-	res, err := Upload(ctx, cloud, key, secret, file)
+	res, err := Upload(ctx, cloud, key, secret, data)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +100,28 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 	}, nil
 }
 
+type pathType int8
+
+const (
+	unknown pathType = iota
+	urlPath
+	filePath
+)
+
+func checkStringType(s string) pathType {
+	// 检查是否为URL
+	u, err := url.Parse(s)
+	if err == nil && u.Scheme != "" {
+		return urlPath
+	}
+
+	// 检查是否为文件路径（存在性校验）
+	if _, err := os.Stat(s); err == nil {
+		return filePath
+	}
+
+	return unknown
+}
 func main() {
 	logger.SetJack("/tmp/cyeam.log", 300)
 	mcpServer, err := server.NewServer(
