@@ -11,26 +11,27 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/ThinkInAIXYZ/go-mcp/pkg"
-	"github.com/ThinkInAIXYZ/go-mcp/protocol"
-	"github.com/ThinkInAIXYZ/go-mcp/server"
-	"github.com/ThinkInAIXYZ/go-mcp/transport"
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/google/uuid"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/mnhkahn/gogogo/logger"
 )
 
-func Upload(ctx context.Context, cloud, key, secret string, data []byte) (string, error) {
+func Upload(ctx context.Context, cloud, key, secret, directory string, data []byte) (string, error) {
 	cld, _ := cloudinary.NewFromParams(cloud, key, secret)
 
 	fileName := uuid.New().String()
+	publicID := fileName
+	if directory != "" {
+		publicID = directory + "/" + fileName
+	}
 	resp, err := cld.Upload.Upload(ctx, bytes.NewReader(data),
 		uploader.UploadParams{
-			PublicID:  fileName,
+			PublicID:  publicID,
 			Overwrite: api.Bool(true)})
 	if err != nil {
 		return "", err
@@ -38,17 +39,18 @@ func Upload(ctx context.Context, cloud, key, secret string, data []byte) (string
 	return resp.SecureURL, nil
 }
 
-type cloudinaryUploadRequest struct {
-	FilePath string `json:"file_path" description:"file path in local directory or file url" required:"true"` // Use field tag to describe input schema
-}
-
-func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResult, error) {
-	var uploadRequest cloudinaryUploadRequest
-	if err := protocol.VerifyAndUnmarshal(req.RawArguments, &uploadRequest); err != nil {
-		return nil, err
+func handleCloudinaryUpload(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	filePathStr, ok := arguments["file_path"].(string)
+	if !ok {
+		return nil, errors.New("file_path must be a string")
 	}
 
-	logger.Info("Received file path: %+v, %+v", uploadRequest)
+	directory := ""
+	if dir, ok := arguments["directory"].(string); ok {
+		directory = dir
+	}
+
+	logger.Info("Received file path: %+v, directory: %+v", filePathStr, directory)
 	cloud, key, secret := "", "", ""
 	for _, env := range os.Environ() {
 		ks := strings.Split(env, "=")
@@ -67,8 +69,8 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 
 	var data []byte
 	var err error
-	if checkStringType(uploadRequest.FilePath) == urlPath {
-		resp, err := http.Get(uploadRequest.FilePath)
+	if checkStringType(filePathStr) == urlPath {
+		resp, err := http.Get(filePathStr)
 		if err != nil {
 			return nil, err
 		}
@@ -77,27 +79,20 @@ func handleCloudinaryUpload(ctx context.Context, req *protocol.CallToolRequest) 
 		if err != nil {
 			return nil, err
 		}
-	} else if checkStringType(uploadRequest.FilePath) == filePath {
-		data, err = os.ReadFile(uploadRequest.FilePath)
+	} else if checkStringType(filePathStr) == filePath {
+		data, err = os.ReadFile(filePathStr)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		return nil, errors.New("file path is invalid")
 	}
-	res, err := Upload(ctx, cloud, key, secret, data)
+	res, err := Upload(context.Background(), cloud, key, secret, directory, data)
 	if err != nil {
 		return nil, err
 	}
 
-	return &protocol.CallToolResult{
-		Content: []protocol.Content{
-			protocol.TextContent{
-				Type: "text",
-				Text: res,
-			},
-		},
-	}, nil
+	return mcp.NewToolResultText(res), nil
 }
 
 type pathType int8
@@ -124,39 +119,32 @@ func checkStringType(s string) pathType {
 }
 func main() {
 	logger.SetJack("/tmp/cyeam.log", 300)
-	mcpServer, err := server.NewServer(
-		transport.NewStdioServerTransport(transport.WithStdioServerOptionLogger(pkg.DebugLogger)),
-		server.WithServerInfo(protocol.Implementation{
-			Name:    "current-time-v2-server",
-			Version: "1.0.0",
-		}),
+	mcpServer := server.NewMCPServer(
+		"cloudinary-mcp-server",
+		"1.0.0",
+		server.WithToolCapabilities(true),
 	)
-	if err != nil {
-		logger.Errorf("Failed to create server: %v", err)
-		return
-	}
-	// Register time query tool
-	tool, err := protocol.NewTool("cloudinary", "Upload file to cloudinary", cloudinaryUploadRequest{})
-	if err != nil {
-		logger.Errorf("Failed to create tool: %v", err)
-		return
-	}
-	mcpServer.RegisterTool(tool, handleCloudinaryUpload)
+	// Register cloudinary upload tool
+	tool := mcp.NewTool("cloudinary",
+		mcp.WithDescription("Upload file to cloudinary"),
+		mcp.WithString("file_path",
+			mcp.Required(),
+			mcp.Description("file path in local directory or file url"),
+		),
+		mcp.WithString("directory",
+			mcp.Description("directory to upload file to in cloudinary"),
+		),
+	)
+	mcpServer.AddTool(tool, handleCloudinaryUpload)
+
 	errCh := make(chan error)
 	go func() {
-		errCh <- mcpServer.Run()
+		errCh <- server.ServeStdio(mcpServer)
 	}()
 
-	if err = signalWaiter(errCh); err != nil {
+	if err := signalWaiter(errCh); err != nil {
 		logger.Errorf("signal waiter: %v", err)
 		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	if err := mcpServer.Shutdown(ctx); err != nil {
-		logger.Errorf("Shutdown error: %v", err)
 	}
 }
 

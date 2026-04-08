@@ -40,12 +40,12 @@ package main
 
 import (
 	"context"
-	"github.com/ThinkInAIXYZ/go-mcp/pkg"
+	"github.com/mark3labs/mcp-go/pkg"
 	"log"
 
-	"github.com/ThinkInAIXYZ/go-mcp/client"
-	"github.com/ThinkInAIXYZ/go-mcp/protocol"
-	"github.com/ThinkInAIXYZ/go-mcp/transport"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/protocol"
+	"github.com/mark3labs/mcp-go/transport"
 )
 
 func main() {
