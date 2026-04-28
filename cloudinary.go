@@ -1,48 +1,41 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
-	"net/http"
+	"fmt"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
-	"github.com/cloudinary/cloudinary-go/v2"
-	"github.com/cloudinary/cloudinary-go/v2/api"
-	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
-	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mnhkahn/gogogo/logger"
+	"gitee.com/cyeam/cloudinary_mcp/pkg/uploader"
 )
 
-func Upload(ctx context.Context, cloud, key, secret, directory string, data []byte) (string, error) {
-	cld, _ := cloudinary.NewFromParams(cloud, key, secret)
 
-	fileName := uuid.New().String()
-	publicID := fileName
-	if directory != "" {
-		publicID = directory + "/" + fileName
-	}
-	resp, err := cld.Upload.Upload(ctx, bytes.NewReader(data),
-		uploader.UploadParams{
-			PublicID:  publicID,
-			Overwrite: api.Bool(true)})
-	if err != nil {
-		return "", err
-	}
-	return resp.SecureURL, nil
-}
 
 func handleCloudinaryUpload(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	filePathStr, ok := arguments["file_path"].(string)
+	filePathsStr, ok := arguments["file_paths"].(string)
 	if !ok {
-		return nil, errors.New("file_path must be a string")
+		return nil, errors.New("file_paths must be a string")
+	}
+
+	// Split comma-separated file paths
+	filePaths := strings.Split(filePathsStr, ",")
+
+	// Check if file count exceeds 50
+	if len(filePaths) > 50 {
+		return nil, errors.New("file count exceeds maximum limit of 50")
+	}
+
+	// Trim whitespace from each file path
+	for i, path := range filePaths {
+		filePaths[i] = strings.TrimSpace(path)
 	}
 
 	directory := ""
@@ -50,7 +43,7 @@ func handleCloudinaryUpload(arguments map[string]interface{}) (*mcp.CallToolResu
 		directory = dir
 	}
 
-	logger.Info("Received file path: %+v, directory: %+v", filePathStr, directory)
+	logger.Info("Received file paths: %+v, directory: %+v", filePaths, directory)
 	cloud, key, secret := "", "", ""
 	for _, env := range os.Environ() {
 		ks := strings.Split(env, "=")
@@ -67,56 +60,64 @@ func handleCloudinaryUpload(arguments map[string]interface{}) (*mcp.CallToolResu
 	}
 	logger.Infof("Received cloud, key, secret: %+v, %+v, %+v", cloud, key, secret)
 
-	var data []byte
-	var err error
-	if checkStringType(filePathStr) == urlPath {
-		resp, err := http.Get(filePathStr)
-		if err != nil {
-			return nil, err
+	// Upload each file and collect results
+	results := make(map[string]string)
+	errors := make(map[string]string)
+
+	for _, filePathStr := range filePaths {
+		if filePathStr == "" {
+			continue
 		}
-		defer resp.Body.Close()
-		data, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
+
+		// Extract file name from file path
+		fileName := ""
+		if uploader.CheckStringType(filePathStr) == uploader.URLPath {
+			u, err := url.Parse(filePathStr)
+			if err == nil {
+				fileName = filepath.Base(u.Path)
+			}
+		} else if uploader.CheckStringType(filePathStr) == uploader.FilePath {
+			fileName = filepath.Base(filePathStr)
 		}
-	} else if checkStringType(filePathStr) == filePath {
-		data, err = os.ReadFile(filePathStr)
-		if err != nil {
-			return nil, err
+
+		if fileName == "" {
+			errors[filePathStr] = "failed to extract file name"
+			continue
 		}
-	} else {
-		return nil, errors.New("file path is invalid")
-	}
-	res, err := Upload(context.Background(), cloud, key, secret, directory, data)
-	if err != nil {
-		return nil, err
+
+		data, _, err := uploader.ReadFileData(filePathStr)
+		if err != nil {
+			errors[filePathStr] = err.Error()
+			continue
+		}
+
+		res, err := uploader.Upload(context.Background(), cloud, key, secret, directory, fileName, data, false)
+		if err != nil {
+			errors[filePathStr] = err.Error()
+			continue
+		}
+
+		results[filePathStr] = res
 	}
 
-	return mcp.NewToolResultText(res), nil
+	// Prepare response
+	response := "Upload results:\n"
+	if len(results) > 0 {
+		response += "Successful uploads:\n"
+		for path, url := range results {
+			response += fmt.Sprintf("%s: %s\n", path, url)
+		}
+	}
+	if len(errors) > 0 {
+		response += "Failed uploads:\n"
+		for path, err := range errors {
+			response += fmt.Sprintf("%s: %s\n", path, err)
+		}
+	}
+
+	return mcp.NewToolResultText(response), nil
 }
 
-type pathType int8
-
-const (
-	unknown pathType = iota
-	urlPath
-	filePath
-)
-
-func checkStringType(s string) pathType {
-	// 检查是否为URL
-	u, err := url.Parse(s)
-	if err == nil && u.Scheme != "" {
-		return urlPath
-	}
-
-	// 检查是否为文件路径（存在性校验）
-	if _, err := os.Stat(s); err == nil {
-		return filePath
-	}
-
-	return unknown
-}
 func main() {
 	logger.SetJack("/tmp/cyeam.log", 300)
 	mcpServer := server.NewMCPServer(
@@ -126,13 +127,13 @@ func main() {
 	)
 	// Register cloudinary upload tool
 	tool := mcp.NewTool("cloudinary",
-		mcp.WithDescription("Upload file to cloudinary"),
-		mcp.WithString("file_path",
+		mcp.WithDescription("Upload files to cloudinary"),
+		mcp.WithString("file_paths",
 			mcp.Required(),
-			mcp.Description("file path in local directory or file url"),
+			mcp.Description("comma-separated list of file paths in local directory or file urls, max 50 files"),
 		),
 		mcp.WithString("directory",
-			mcp.Description("directory to upload file to in cloudinary"),
+			mcp.Description("directory to upload files to in cloudinary"),
 		),
 	)
 	mcpServer.AddTool(tool, handleCloudinaryUpload)
