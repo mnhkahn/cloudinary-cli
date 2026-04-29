@@ -3,6 +3,7 @@ package uploader
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,6 +46,18 @@ func IsImage(fileName string) bool {
 	return false
 }
 
+func randomString(n int) (string, error) {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = letters[int(b[i])%len(letters)]
+	}
+	return string(b), nil
+}
+
 func Upload(ctx context.Context, cloud, key, secret, directory, fileName string, data []byte, compress bool) (string, error) {
 	cld, err := cloudinary.NewFromParams(cloud, key, secret)
 	if err != nil {
@@ -52,7 +65,21 @@ func Upload(ctx context.Context, cloud, key, secret, directory, fileName string,
 	}
 
 	ext := filepath.Ext(fileName)
+
+	converted, err := ConvertToWebP(data, ext)
+	if err == nil && len(converted) < len(data) {
+		data = converted
+		fileName = strings.TrimSuffix(fileName, ext) + ".webp"
+		ext = ".webp"
+	}
+
 	publicID := strings.TrimSuffix(fileName, ext)
+
+	suffix, err := randomString(6)
+	if err != nil {
+		return "", fmt.Errorf("generate random suffix: %w", err)
+	}
+	publicID = publicID + "_" + suffix
 
 	params := uploader.UploadParams{
 		PublicID:  publicID,
